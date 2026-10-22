@@ -1,0 +1,11 @@
+node_modules
+.env
+backups
+*.log
+test
+scripts/*.sh
+scripts/gen-countries.js
+scripts/test-env.sh
+README.md
+.git
+docker-compose.yml

@@ -1,0 +1,19 @@
+# One word per line. A name is refused if it CONTAINS any of these (after removing digits tricks, dots and repeated letters).
+# This is a small starter list: extend it with words in the languages of your players.
+fuck
+shit
+bitch
+asshole
+cunt
+pussy
+nigger
+nigga
+faggot
+retard
+nazi
+hitler
+rape
+porn
+whore
+slut
+chinaman

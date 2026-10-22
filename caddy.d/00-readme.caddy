@@ -1,0 +1,1 @@
+# Files in this folder are included by the Caddyfile. scripts/cloudflare-only.sh writes 10-cloudflare.caddy here.

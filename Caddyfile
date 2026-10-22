@@ -1,0 +1,15 @@
+# {$DOMAIN} comes from .env, e.g. squeaksmash.com
+{$DOMAIN}, www.{$DOMAIN} {
+	# optional extra rules, e.g. "only Cloudflare may talk to us" (written by scripts/cloudflare-only.sh)
+	import /etc/caddy/conf.d/*.caddy
+	encode zstd gzip
+	# also serve www -> bare domain
+	@www host www.{$DOMAIN}
+	redir @www https://{$DOMAIN}{uri} permanent
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+	}
+	reverse_proxy api:3000
+}

@@ -68,3 +68,17 @@ create table if not exists hall_of_fame (
   players  integer  not null,
   primary key (month, rank)
 );
+
+-- page-visit counter, filled by the server itself (nothing is added to the page and nothing is shown to visitors).
+-- "visitor" = a keyed hash of IP + browser + day, so it cannot be followed from one day to the next and the raw IP is never stored.
+create table if not exists visits (
+  day       date        not null,                  -- UTC day
+  visitor   text        not null,
+  views     integer     not null default 1,
+  bot       boolean     not null default false,
+  src       text,                                  -- ?utm_source= of the landing URL, same rules as players.src
+  ref       text,                                  -- host name of the referring site only, e.g. "www.reddit.com"
+  country   char(2),                               -- from Cloudflare's header when the site is behind it
+  primary key (day, visitor)
+);
+create index if not exists visits_day_idx on visits (day);

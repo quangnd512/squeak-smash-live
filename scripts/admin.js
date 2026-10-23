@@ -6,6 +6,7 @@
 //   unban <name>
 //   purge <name>          ban + take back ALL of that player's rounds
 //   stats                 quick numbers for today / this month
+//   visits [days] [by]    page visits (default 14 days). by = day (default) | src | ref | country
 const { makePool } = require('../server/db.js');
 const cfg = require('../server/config.js');
 
@@ -74,8 +75,32 @@ async function main() {
          where p.created_at > now() - ($1 || ' days')::interval and not p.banned
          group by 1 order by new_players desc`, [String(days)]);
       console.table(q.rows);
+    } else if (cmd === 'visits') {
+      // unique visitors = distinct (ip + browser) per UTC day, bots counted separately. Visitors are never shown anything for this.
+      const [, a1, a2] = process.argv.slice(2);
+      const days = parseInt(a1, 10) || 14, by = ['day', 'src', 'ref', 'country'].includes(a2) ? a2 : 'day';
+      if (by === 'day') {
+        const q = await pool.query(`
+          select to_char(d.day, 'YYYY-MM-DD') as day,
+                 count(v.*) filter (where not v.bot)::int as visitors,
+                 coalesce(sum(v.views) filter (where not v.bot), 0)::int as page_views,
+                 count(v.*) filter (where v.bot)::int as bots,
+                 (select count(*)::int from players p where (p.created_at at time zone 'UTC')::date = d.day and not p.banned) as new_players
+            from generate_series(((now() at time zone 'UTC')::date - ($1::int - 1)), (now() at time zone 'UTC')::date, interval '1 day') as d(day)
+            left join visits v on v.day = d.day::date
+           group by d.day order by d.day desc`, [days]);
+        console.table(q.rows);
+        const t = await pool.query(`select count(*) filter (where not bot)::int as visitor_days, coalesce(sum(views) filter (where not bot),0)::int as page_views, count(*) filter (where bot)::int as bot_days
+                                      from visits where day > (now() at time zone 'UTC')::date - $1::int`, [days]);
+        console.log('last ' + days + ' days (a visitor who comes on 2 days counts twice):'); console.table(t.rows);
+      } else {
+        const col = by === 'src' ? "coalesce(src, '(none)')" : by === 'ref' ? "coalesce(ref, '(direct or hidden)')" : "coalesce(country::text, '(unknown)')";
+        const q = await pool.query(`select ${col} as ${by}, count(*)::int as visitor_days, coalesce(sum(views),0)::int as page_views
+                                      from visits where not bot and day > (now() at time zone 'UTC')::date - $1::int group by 1 order by 2 desc limit 40`, [days]);
+        console.table(q.rows);
+      }
     } else {
-      console.log('commands: suspects [n] | reject-round <id> | ban <name> | unban <name> | purge <name> | stats | sources [days]');
+      console.log('commands: suspects [n] | reject-round <id> | ban <name> | unban <name> | purge <name> | stats | sources [days] | visits [days] [day|src|ref|country]');
     }
   } finally { await pool.end(); }
 }

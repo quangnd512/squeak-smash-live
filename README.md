@@ -23,6 +23,8 @@ Dockerfile, docker-compose.yml, Caddyfile, .env.example
 
 Điểm quốc gia = **tổng** điểm mọi ván của mọi người chơi trong tháng. Quốc gia cần ít nhất 1 người chơi trong tháng mới được xếp hạng. Bảng người chơi xếp theo **ván cao nhất** (mặc định tính mọi thời đại; đặt `PLAYERS_BOARD_SCOPE=month` để tính theo tháng).
 
+**Thỏ Clover xuất hiện nhiều dần:** tỉ lệ thỏ trong `shared/game-core.js` tăng đều theo thời gian của ván, từ 4% lúc bắt đầu lên 24% ở giây cuối (`P_BUNNY_START`, `P_BUNNY_END`; trung bình khoảng 14%, trước đây cố định 12%). File này dùng chung cho trình duyệt và server nên sửa xong phải cập nhật cả hai cùng lúc (`docker compose up -d --build`); ván nào đang chơi dở đúng lúc cập nhật có thể bị tính sai hoặc bị đánh dấu nghi ngờ, nên làm lúc ít người chơi.
+
 Redis dùng cho: giới hạn tốc độ, ván đang mở. Bảng xếp hạng nằm trong Postgres (có index, đủ cho hàng trăm nghìn người chơi); khi lớn hơn mới cần chuyển sang Redis sorted set.
 
 ## 2. Chạy thử trên máy bạn (không cần domain)
@@ -106,6 +108,8 @@ Cài `rclone` và đặt `RCLONE_REMOTE=...` trong `.env` để mỗi bản sao 
 ```bash
 docker compose exec api node scripts/admin.js stats          # số liệu 24 giờ qua
 docker compose exec api node scripts/admin.js sources 30   # nguồn nào mang về người chơi quay lại (30 ngày qua)
+docker compose exec api node scripts/admin.js visits 14        # lượt truy cập theo ngày (14 ngày qua)
+docker compose exec api node scripts/admin.js visits 30 src    # truy cập theo utm_source (cũng có: ref, country)
 docker compose exec api node scripts/admin.js suspects       # ván bị đánh dấu "nghi ngờ"/"từ chối"
 docker compose exec api node scripts/admin.js reject-round 123   # gỡ điểm một ván
 docker compose exec api node scripts/admin.js ban TenNguoiChoi   # cấm
@@ -119,7 +123,35 @@ docker compose exec api node scripts/admin.js purge TenNguoiChoi # cấm + gỡ 
 
 ## 5a. Đo nguồn người chơi (utm_source)
 
-Gắn `?utm_source=<tên>` vào mọi link bạn đăng ra ngoài, ví dụ `https://domain/?utm_source=reddit_ph` hoặc `?c=PH&utm_source=tiktok_ph` (`c=` chọn sẵn quốc gia). Lần ghé đầu tiên được nhớ trong trình duyệt và lưu vào người chơi khi họ đăng ký. Tên nguồn chỉ gồm chữ thường, số, `_ . -`, tối đa 32 ký tự; giá trị khác bị bỏ. Nút Share trong game tự tạo link `?c=<nước người chơi>&utm_source=share`. Xem kết quả bằng lệnh `sources` ở mục 4: số người mới, số người chơi từ 3 ván, số người quay lại ngày sau. Chỉ đếm người **đã đăng ký** (nhập tên), không đếm người chỉ mở trang.
+Gắn `?utm_source=<tên>` vào mọi link bạn đăng ra ngoài, ví dụ `https://domain/?utm_source=reddit_ph` hoặc `?c=PH&utm_source=tiktok_ph` (`c=` chọn sẵn quốc gia). Lần ghé đầu tiên được nhớ trong trình duyệt và lưu vào người chơi khi họ đăng ký. Tên nguồn chỉ gồm chữ thường, số, `_ . -`, tối đa 32 ký tự; giá trị khác bị bỏ. Nút Share trong game tự tạo link `?c=<nước người chơi>&utm_source=share`. Xem kết quả bằng lệnh `sources` ở mục 4: số người mới, số người chơi từ 3 ván, số người quay lại ngày sau. Lệnh `sources` chỉ đếm người **đã đăng ký** (nhập tên); người chỉ mở trang xem ở mục 5b.
+
+## 5b. Đếm lượt truy cập (chạy ngầm, người chơi không thấy)
+
+Mỗi lần ai đó tải trang game (`/`), server tự ghi một dòng vào bảng `visits`. Trang web không có thêm mã nào, không đặt cookie, không hiện thông báo; chỉ quản trị viên xem được, bằng lệnh `visits` ở mục 4.
+
+```bash
+docker compose exec api node scripts/admin.js visits            # theo ngày, 14 ngày qua
+docker compose exec api node scripts/admin.js visits 30         # 30 ngày
+docker compose exec api node scripts/admin.js visits 30 src     # theo utm_source của link vào
+docker compose exec api node scripts/admin.js visits 30 ref     # theo trang giới thiệu (ví dụ www.reddit.com)
+docker compose exec api node scripts/admin.js visits 30 country # theo quốc gia (cần Cloudflare)
+```
+
+- **Các cột (theo ngày):** `visitors` = người truy cập khác nhau trong ngày (không tính bot); `page_views` = số lần tải trang; `bots` = số "người" bị nhận là bot (Googlebot, UptimeRobot, curl...); `new_players` = người chơi mới đăng ký trong ngày. So `new_players` với `visitors` để biết bao nhiêu phần trăm người vào thì chịu chơi.
+- **"Người truy cập" tính thế nào:** mã băm có khóa bí mật của IP + trình duyệt + ngày (dùng `HASH_SECRET`). Mã đổi mỗi ngày nên không theo dõi được một người qua nhiều ngày; ai vào hai ngày thì được đếm hai lần. IP gốc không được lưu. Dòng tổng cuối bảng cũng đếm theo cách đó.
+- **Chỉ số chỉ là ước lượng:** trình duyệt giữ trang tối đa 5 phút nên tải lại trong khoảng đó không được tính; nhiều người chung IP và cùng loại trình duyệt (ví dụ cùng mạng công ty) có thể bị gộp làm một; bot lạ không khai tên có thể lọt vào số người thật.
+- **Cột nguồn:** `src` lấy từ `?utm_source=` của link vào (cùng quy tắc ở mục 5a); `ref` chỉ lưu tên miền của trang giới thiệu, không lưu đường dẫn đầy đủ; `country` đọc từ header của Cloudflare, nếu chưa dùng Cloudflare thì hiện `(unknown)`.
+- **Lưu bao lâu:** 400 ngày rồi tự xóa (đổi bằng `VISIT_RETENTION_DAYS` trong `.env`). Bảng nằm trong Postgres nên đã có trong bản sao lưu.
+- **Lưu ý pháp lý:** Chính sách riêng tư vẫn phải nói game đo lượt truy cập ẩn danh (IP băm, trình duyệt, trang giới thiệu); không cần hiện thông báo trong game nhưng phải có câu đó trong chính sách.
+- **Cập nhật lên VPS:** push code, `git pull`, `docker compose up -d --build`. Bảng `visits` tự tạo khi api khởi động.
+
+## 5c. Chia sẻ điểm và nhân vật phản ứng cuối ván
+
+- **Nút Share** ở màn hình kết quả mở bảng "Share your score": ảnh điểm 1080x1350 (vẽ ngay trong trình duyệt, không tải gì từ ngoài), nút Save image, Share… (điện thoại: gửi cả ảnh qua Facebook, Messenger, Zalo, Instagram… nếu máy hỗ trợ), Facebook, X, WhatsApp, Telegram, Reddit, Copy link. Facebook và Instagram không nhận ảnh từ trang web nên người chơi lưu ảnh rồi tự đăng; link gửi đi hiện ảnh xem trước `public/og.png` (cần có thật trên domain, thẻ `og:` nằm ở đầu `index.html`).
+- **Mỗi nền tảng một nguồn riêng:** link chia sẻ mang `utm_source=share_facebook`, `share_x`, `share_whatsapp`, `share_telegram`, `share_reddit`, hoặc `share` (gửi thẳng/sao chép). Xem bằng `admin.js sources 30` và `admin.js visits 30 src`.
+- **Goldie và Pip:** sau mỗi ván đã được server xác nhận, một cửa sổ toàn màn hình hiện ra vài giây (mặc định 4 giây, chạm vào màn hình hoặc nhấn Esc để đóng sớm). Nếu điểm cao hơn kỷ lục của người chơi thì Goldie vàng nhảy múa trong mưa giấy màu và chúc mừng; nếu không thì Pip nháy mắt, lè lưỡi và trêu. Hai nhân vật vẽ toàn thân theo Hồ sơ nhân vật (hàm `charSvg` trong `public/index.html`). Ván không được xác nhận thì không hiện. Ván bằng đúng kỷ lục cũ tính là không phá kỷ lục, nên Pip trêu.
+- **Sửa câu thoại:** mở file `public/mascot-lines.js` (có hướng dẫn ngay đầu file). Mảng `goldie` là các câu khích lệ, mảng `pip` là các câu chế giễu, `popupSeconds` là số giây hiện popup. Các câu được đưa ra lần lượt nên người chơi thấy hết rồi mới lặp. Dùng `{score}`, `{gain}`, `{gap}` nếu muốn chèn số. Sửa xong chạy `docker compose up -d --build` để áp dụng; trình duyệt có thể giữ bản cũ tối đa 5 phút.
+- **Ảnh xem trước og.png** vẽ bằng cùng hàm `drawMouse` trong `index.html`. Muốn đổi, vẽ lại bằng trình duyệt headless rồi chép đè `public/og.png`.
 
 ## 5. Quảng cáo (khi đã có lượng truy cập thật)
 

@@ -12,7 +12,7 @@
  *
  * Rules (from the project spec):
  *   60 s, 5 silent speed levels (15/15/10/10/10 s). normal 1 pt, golden 5 pts, hard-hat mouse 2 hits = 3 pts,
- *   bunny -1 pt and a 1 s stun, every 3 hits in a row +2 bonus. Missing (empty hole, a mouse that already
+ *   bunny (Clover, appears more and more over the round) -1 pt and a 1 s stun, every 3 hits in a row +2 bonus. Missing (empty hole, a mouse that already
  *   got hit, or a mouse that leaves un-whacked) breaks the streak.
  *
  * IMPORTANT: only use +, -, *, / and Math.floor/round/min/max in here (no Math.sin, exp, ...), so every
@@ -36,7 +36,10 @@
   ];
   var PTS = { normal: 1, gold: 5, tough: 3 };
   var BUNNY_PENALTY = 1, STUN_MS = 1000, COMBO_EVERY = 3, COMBO_BONUS = 2;
-  var P_BUNNY = 0.12, P_GOLD = 0.07, P_TOUGH = 0.09;   // tough mice appear from level 2 on
+  var P_GOLD = 0.07, P_TOUGH = 0.09;   // tough mice appear from level 2 on
+  // Clover the bunny shows up more and more as the round goes on: P_BUNNY_START at 0 s rising in a straight line to P_BUNNY_END at 60 s
+  var P_BUNNY_START = 0.04, P_BUNNY_END = 0.24;
+  function bunnyChance(t) { return P_BUNNY_START + (P_BUNNY_END - P_BUNNY_START) * Math.min(1, t / DURATION_MS); }
 
   function levelAt(t) {
     for (var i = 0; i < LEVELS.length; i++) if (t < LEVELS[i].until) return i;
@@ -69,10 +72,10 @@
       if (upNow < L.max && free.length) {
         var hole = free[Math.floor(rHole * free.length)];
         var type = 'normal';
-        var tough = lv >= 1 ? P_TOUGH : 0;
-        if (rType < P_BUNNY) type = 'bunny';
-        else if (rType < P_BUNNY + P_GOLD && goldUntil <= t) type = 'gold';
-        else if (rType >= P_BUNNY + P_GOLD && rType < P_BUNNY + P_GOLD + tough) type = 'tough';
+        var tough = lv >= 1 ? P_TOUGH : 0, pb = bunnyChance(t);
+        if (rType < pb) type = 'bunny';
+        else if (rType < pb + P_GOLD && goldUntil <= t) type = 'gold';
+        else if (rType >= pb + P_GOLD && rType < pb + P_GOLD + tough) type = 'tough';
         var dur = type === 'gold' ? Math.max(600, Math.round(L.up * 0.85))
                 : type === 'tough' ? Math.round(L.up * 1.4)
                 : L.up;
@@ -224,7 +227,7 @@
   }
 
   return {
-    DURATION_MS: DURATION_MS, HOLES: HOLES, LEVELS: LEVELS, PTS: PTS,
+    DURATION_MS: DURATION_MS, HOLES: HOLES, LEVELS: LEVELS, PTS: PTS, bunnyChance: bunnyChance,
     BUNNY_PENALTY: BUNNY_PENALTY, STUN_MS: STUN_MS, COMBO_EVERY: COMBO_EVERY, COMBO_BONUS: COMBO_BONUS,
     levelAt: levelAt, mulberry32: mulberry32,
     buildSchedule: buildSchedule, createRound: createRound,

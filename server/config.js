@@ -29,7 +29,8 @@ module.exports = {
   retention: {
     tapLogDays: int(env.TAPLOG_RETENTION_DAYS, 30),
     emptyGuestHours: int(env.EMPTY_GUEST_HOURS, 24),
-    inactiveGuestDays: int(env.INACTIVE_GUEST_DAYS, 365)
+    inactiveGuestDays: int(env.INACTIVE_GUEST_DAYS, 365),
+    visitDays: int(env.VISIT_RETENTION_DAYS, 400)
   },
   // extra Content-Security-Policy sources, e.g. for Google AdSense once you add ads (see README)
   cspScript: env.CSP_SCRIPT || '', cspImg: env.CSP_IMG || '', cspConnect: env.CSP_CONNECT || '', cspFrame: env.CSP_FRAME || '',

@@ -28,7 +28,8 @@ async function retention(pool, r) {
   const a = await pool.query(`update rounds set taps_json = null where taps_json is not null and finished_at < now() - ($1 || ' days')::interval and status = 'ok'`, [String(r.tapLogDays)]);
   const b = await pool.query(`delete from players where rounds = 0 and created_at < now() - ($1 || ' hours')::interval`, [String(r.emptyGuestHours)]);
   const c = await pool.query(`delete from players where last_seen < now() - ($1 || ' days')::interval and best_score < 5`, [String(r.inactiveGuestDays)]);
-  return { tapLogsWiped: a.rowCount, emptyGuestsRemoved: b.rowCount, inactiveGuestsRemoved: c.rowCount };
+  const d = await pool.query(`delete from visits where day < (now() at time zone 'utc')::date - $1::int`, [r.visitDays || 400]);
+  return { tapLogsWiped: a.rowCount, emptyGuestsRemoved: b.rowCount, inactiveGuestsRemoved: c.rowCount, visitRowsRemoved: d.rowCount };
 }
 
 module.exports = { makePool, migrate, archiveFinishedMonths, retention };

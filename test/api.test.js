@@ -58,6 +58,26 @@ test('join: stores a clean traffic source and drops junk', { skip }, async () =>
   }
 });
 
+test('visit counter: counts page loads silently, separates bots, stores no raw IP', { skip }, async () => {
+  await pool.query('truncate visits');
+  const page = (url, headers, ip) => app.inject({ method: 'GET', url, headers: { 'x-forwarded-for': ip, ...headers } });
+  const ua = 'Mozilla/5.0 (X11; Linux x86_64) Chrome/120';
+  const r1 = await page('/?utm_source=Reddit_PH&c=PH', { 'user-agent': ua, referer: 'https://www.reddit.com/r/webgames/' }, '5.5.5.5');
+  assert.equal(r1.statusCode, 200);
+  assert.equal(r1.headers['set-cookie'], undefined);                 // nothing is set on the visitor
+  await page('/', { 'user-agent': ua }, '5.5.5.5');                  // same visitor again: a second view, not a second visitor
+  await page('/', { 'user-agent': ua }, '6.6.6.6');
+  await page('/', { 'user-agent': 'Googlebot/2.1' }, '7.7.7.7');
+  await page('/api/state', { 'user-agent': ua }, '8.8.8.8');          // API calls are not page visits
+  await page('/nope.js', { 'user-agent': ua }, '8.8.8.8');
+  const { rows } = await pool.query('select * from visits order by views desc, visitor');
+  assert.equal(rows.length, 3);
+  const mine = rows.find(r => r.views === 2);
+  assert.equal(mine.src, 'reddit_ph'); assert.equal(mine.ref, 'www.reddit.com'); assert.equal(mine.bot, false);
+  assert.equal(rows.filter(r => r.bot).length, 1);
+  assert.ok(!JSON.stringify(rows).includes('5.5.5.5'));
+});
+
 test('join: validates names, countries, blocks duplicates and bad words', { skip }, async () => {
   assert.equal((await join('ab', 'VN')).res.statusCode, 400);
   assert.equal((await join('bad name', 'VN')).res.statusCode, 400);

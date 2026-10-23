@@ -43,6 +43,31 @@ async function buildApp({ cfg, pool, redis, now = () => new Date(), clock = () =
   };
   const ipHash = (ip) => crypto.createHmac('sha256', cfg.hashSecret).update(ip).digest('hex').slice(0, 24);
 
+  /* ---------- visit counter: counts page loads of the game page, silently (no client code, no cookie, nothing shown) ---------- */
+  const BOT_RE = /bot|crawl|spider|slurp|monitor|uptime|curl|wget|python|java|go-http|headless|preview|facebookexternalhit|lighthouse|pingdom|scan/i;
+  app.addHook('onResponse', async (req, reply) => {
+    try {
+      if (req.method !== 'GET' || (reply.statusCode !== 200 && reply.statusCode !== 304)) return;
+      const path = req.url.split('?')[0];
+      if (path !== '/' && path !== '/index.html') return;
+      const day = now().toISOString().slice(0, 10);
+      const ua = String(req.headers['user-agent'] || '');
+      const visitor = crypto.createHmac('sha256', cfg.hashSecret).update('v|' + day + '|' + ipOf(req) + '|' + ua).digest('hex').slice(0, 20);
+      const bot = !ua || BOT_RE.test(ua);
+      const q = req.query || {};
+      const us = typeof q.utm_source === 'string' ? q.utm_source.toLowerCase() : '';
+      const src = /^[a-z0-9][a-z0-9_.-]{0,31}$/.test(us) ? us : null;
+      let ref = null;
+      try { const h = new URL(String(req.headers.referer || '')).hostname.toLowerCase().slice(0, 60); if (h && h !== String(req.hostname || '').split(':')[0].toLowerCase()) ref = h; } catch (_) {}
+      const cc = String(req.headers['cf-ipcountry'] || '').toUpperCase();
+      const country = /^[A-Z]{2}$/.test(cc) && cc !== 'XX' && cc !== 'T1' ? cc : null;
+      await pool.query(
+        `insert into visits (day, visitor, bot, src, ref, country) values ($1,$2,$3,$4,$5,$6)
+         on conflict (day, visitor) do update set views = visits.views + 1, src = coalesce(visits.src, excluded.src), ref = coalesce(visits.ref, excluded.ref)`,
+        [day, visitor, bot, src, ref, country]);
+    } catch (e) { req.log.warn(e, 'visit counter failed'); }
+  });
+
   // fixed-window counter in Redis. returns true when the caller is still under the limit
   async function allow(key, max, windowSec) {
     const k = 'rl:' + key;

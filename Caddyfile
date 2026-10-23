@@ -1,11 +1,12 @@
 # {$DOMAIN} comes from .env, e.g. squeaksmash.com
-{$DOMAIN}, www.{$DOMAIN} {
+{$DOMAIN}, www.{$DOMAIN}, squeaks.me, www.squeaks.me {
+	# both domains serve the same game; DNS A records for all four names -> the VPS IP
 	# optional extra rules, e.g. "only Cloudflare may talk to us" (written by scripts/cloudflare-only.sh)
 	import /etc/caddy/conf.d/*.caddy
 	encode zstd gzip
-	# also serve www -> bare domain
-	@www host www.{$DOMAIN}
-	redir @www https://{$DOMAIN}{uri} permanent
+	# www -> bare domain, keeping whichever domain the visitor used
+	@www host www.{$DOMAIN} www.squeaks.me
+	redir @www https://{http.request.host.labels.1}.{http.request.host.labels.0}{uri} permanent
 
 	header {
 		Strict-Transport-Security "max-age=31536000"
@@ -13,3 +14,4 @@
 	}
 	reverse_proxy api:3000
 }
+
